@@ -1,0 +1,202 @@
+﻿@page "/"
+@using ZawartoscLodowki.BlazorGui.Interfaces
+@using ZawartoscLodowki.BlazorGui.Models.ViewModels
+@inject IAssortmentService AssortmentService
+@inject IAssortmentKindService AssortmentkindService
+@inject IMeasureUnitService MeasureService
+@inject NotificationService NotificationService
+<style>
+    .rz-grid-table {
+    width: unset;
+    }
+</style>
+
+<RadzenDataGrid @ref="assortmentGrid" AllowAlternatingRows="false" AllowFiltering="true" AllowPaging="true" PageSize="5" AllowSorting="true" EditMode="DataGridEditMode.Single" FilterMode="FilterMode.CheckBoxList" ApplyFilterText="Zatwierdź" ClearFilterText="Wyczyść" EmptyText="Brak danych"
+Data="@_assortments" TItem="AssortmentVM" RowUpdate="@OnUpdateRow" RowCreate="@OnCreateRow" Sort="@Reset" Page="@Reset" Filter="@Reset" ColumnWidth="200px">
+    <HeaderTemplate>
+        <RadzenButton ButtonStyle="ButtonStyle.Success" Icon="add_circle" Text="Dodaj nowy produkt" Click="@InsertRow" Disabled="@(editMode == DataGridEditMode.Single && ordersToInsert.Count() > 0)" />
+    </HeaderTemplate>
+    <Columns>
+        <RadzenDataGridColumn Property="AssortmentKind.Name" Title="Rodzaj" Width="280px">
+            <EditTemplate Context="assortment">
+                <RadzenDropDown @bind-Value="assortment.AssortmentKind" Data="@assortmentKindsVm" TextProperty="Name" Style="width:100%; display: block;"/>
+            </EditTemplate>
+        </RadzenDataGridColumn>
+        <RadzenDataGridColumn Property="MeasureUnit.Name" Title="Jednostka" Width="280px">
+            <EditTemplate Context="assortment">
+                <RadzenDropDown @bind-Value="assortment.MeasureUnit" Data="@measureUnitsVm" TextProperty="Name" Style="width:100%; display: block;"/>
+            </EditTemplate>
+        </RadzenDataGridColumn>
+        <RadzenDataGridColumn Property="Quantity" Title="Ilość">
+            <Template Context="assortment">
+                @String.Format(new System.Globalization.CultureInfo("en-US"), "{0:C}", assortment.Quantity)
+            </Template>
+            <EditTemplate Context="assortment">
+                <RadzenNumeric @bind-Value="assortment.Quantity" Style="width:100%" InputAttributes="@(new Dictionary<string,object>(){ { "aria-label", "Select freight" }})" />
+            </EditTemplate>
+        </RadzenDataGridColumn>
+        <RadzenDataGridColumn Property="ExpireDate" Title="Data przydatności" Width="200px">
+            <Template Context="assortment">
+                @String.Format("{0:d}", assortment.ExpireDate)
+            </Template>
+            <EditTemplate Context="assortment">
+                <RadzenDatePicker @bind-Value="assortment.ExpireDate" Style="width:100%" InputAttributes="@(new Dictionary<string,object>(){ { "aria-label", "Select order date" }})" />
+            </EditTemplate>
+        </RadzenDataGridColumn>
+        
+        
+        <RadzenDataGridColumn Property="ProductName" Title="Nazwa produktu">
+            <EditTemplate Context="assortments">
+                <RadzenTextBox @bind-Value="assortments.ProductName" Style="width:200px; display: block" Name="Name" aria-label="Enter ship name" />
+                <RadzenRequiredValidator Text="Nazwa produktu jest wymagana" Component="Name" Popup="true" />
+            </EditTemplate>
+        </RadzenDataGridColumn>
+        <RadzenDataGridColumn Context="assortment" Filterable="false" Sortable="false" TextAlign="TextAlign.Right" Frozen="true" FrozenPosition="FrozenColumnPosition.Right">
+            <Template Context="assortment">
+                <RadzenButton Icon="add_circle" ButtonStyle="ButtonStyle.Success" Variant="Variant.Flat" Size="ButtonSize.Medium" Shade="Shade.Lighter" Click="@(() => InsertAfterRow(assortment))" title="Add new row after this row" Disabled="@(editMode == DataGridEditMode.Single && ordersToInsert.Count() > 0)" />
+                <RadzenButton Icon="edit" ButtonStyle="ButtonStyle.Light" Variant="Variant.Flat" Size="ButtonSize.Medium" class="rz-my-1 rz-ms-1" Click="@(args => EditRow(assortment))" @onclick:stopPropagation="true" />
+                <RadzenButton Icon="delete" ButtonStyle="ButtonStyle.Danger" Variant="Variant.Flat" Size="ButtonSize.Medium" Shade="Shade.Lighter" class="rz-my-1 rz-ms-1" Click="@(args => DeleteRow(assortment))" @onclick:stopPropagation="true" />
+            </Template>
+            <EditTemplate Context="assortment">
+                <RadzenButton Icon="check" ButtonStyle="ButtonStyle.Success" Variant="Variant.Flat" Size="ButtonSize.Medium" Click="@((args) => SaveRow(assortment))" aria-label="Save"/>
+                <RadzenButton Icon="close" ButtonStyle="ButtonStyle.Light" Variant="Variant.Flat" Size="ButtonSize.Medium" class="rz-my-1 rz-ms-1" Click="@((args) => CancelEdit(assortment))" aria-label="Cancel"/>
+                <RadzenButton Icon="delete" ButtonStyle="ButtonStyle.Danger" Variant="Variant.Flat" Size="ButtonSize.Medium" Shade="Shade.Lighter" class="rz-my-1 rz-ms-1" Click="@(args => DeleteRow(assortment))" aria-label="Delete" />
+            </EditTemplate>
+        </RadzenDataGridColumn>
+    </Columns>
+</RadzenDataGrid>
+
+@code {
+    RadzenDataGrid<AssortmentVM> assortmentGrid;
+    IEnumerable<MeasureUnitVM> measureUnitsVm;
+    IEnumerable<AssortmentKindVM> assortmentKindsVm;
+    List<AssortmentVM> _assortments = [];
+    DataGridEditMode editMode = DataGridEditMode.Single;
+
+    List<AssortmentVM> ordersToInsert = new List<AssortmentVM>();
+    List<AssortmentVM> ordersToUpdate = new List<AssortmentVM>();
+
+    void Reset()
+    {
+        ordersToInsert.Clear();
+        ordersToUpdate.Clear();
+    }
+
+    void Reset(AssortmentVM assortment)
+    {
+        ordersToInsert.Remove(assortment);
+        ordersToUpdate.Remove(assortment);
+    }
+
+    protected override async Task OnInitializedAsync()
+    {
+        await base.OnInitializedAsync();
+        _assortments = await AssortmentService.GetAssortments();
+        assortmentKindsVm = await AssortmentkindService.GetAssortmentKinds();
+        measureUnitsVm = await MeasureService.GetMeasureUnits();
+    }
+
+    async Task EditRow(AssortmentVM assortment)
+    {
+        if (!assortmentGrid.IsValid) return;
+
+        if (editMode == DataGridEditMode.Single)
+        {
+            Reset();
+        }
+
+        ordersToUpdate.Add(assortment);
+        await assortmentGrid.EditRow(assortment);
+    }
+
+    async Task OnUpdateRow(AssortmentVM assortment)
+    {
+        Reset(assortment);
+
+        await AssortmentService.UpdateAssortment(assortment);
+        _assortments = await AssortmentService.GetAssortments();
+        StateHasChanged();
+    }
+
+    async Task SaveRow(AssortmentVM assortment)
+    {
+        try
+        {
+            assortment.AssortmentKindId = assortment.AssortmentKind.Id;
+            assortment.MeasureUnitId = assortment.MeasureUnit.Id;
+            await assortmentGrid.UpdateRow(assortment);
+        }
+        catch (Exception ex)
+        {
+            NotificationService.Notify(new()
+            {
+                Severity = NotificationSeverity.Error,
+                Summary = ex.Message,
+                Duration = 4000
+            });
+        }
+        
+    }
+
+    async Task CancelEdit(AssortmentVM assortment)
+    {
+        Reset(assortment);
+
+        assortmentGrid.CancelEditRow(assortment);
+        _assortments = await AssortmentService.GetAssortments();
+    }
+
+    async Task DeleteRow(AssortmentVM assortment)
+    {
+        Reset(assortment);
+
+        await AssortmentService.DeleteAssortment(assortment);
+        _assortments = await AssortmentService.GetAssortments();
+        StateHasChanged();
+    }
+
+    async Task InsertRow()
+    {
+        if (!assortmentGrid.IsValid) return;
+
+        Reset();
+
+        var order = new AssortmentVM();
+        ordersToInsert.Add(order);
+        await assortmentGrid.InsertRow(order);
+    }
+
+    async Task InsertAfterRow(AssortmentVM assortment)
+    {
+        if (!assortmentGrid.IsValid) return;
+
+        Reset();
+
+        var order = new AssortmentVM();
+        ordersToInsert.Add(order);
+        await assortmentGrid.InsertAfterRow(order, assortment);
+    }
+
+    async Task OnCreateRow(AssortmentVM assortment)
+    {
+        try
+        {
+            assortment.Id = await AssortmentService.CreateAssortment(assortment);
+            if (assortment.Id == -1)
+                throw new ArgumentException("Błąd podczas dodawania nowego tawaru");
+            ordersToInsert.Remove(assortment);
+            _assortments = await AssortmentService.GetAssortments();
+            StateHasChanged();
+
+        }
+        catch (Exception ex)
+        {
+            NotificationService.Notify(new()
+            {
+                Severity = NotificationSeverity.Error,
+                Summary = ex.Message,
+                Duration = 4000
+            });
+        }
+    }
+}

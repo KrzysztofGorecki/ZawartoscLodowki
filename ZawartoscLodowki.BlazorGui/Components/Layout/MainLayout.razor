@@ -1,0 +1,18 @@
+﻿@inherits LayoutComponentBase
+
+<RadzenLayout Style="grid-template-areas: 'rz-sidebar rz-header' 'rz-sidebar rz-body'">
+    <RadzenHeader>
+        <RadzenStack Orientation="Orientation.Horizontal" AlignItems="AlignItems.Center" Gap="0">
+            <RadzenLabel class="rz=m-4" Text="Zawartość Lodówki" />
+        </RadzenStack>
+    </RadzenHeader>
+    
+    <RadzenBody>
+        <div class="rz-p-4">
+            @Body
+        </div>
+    </RadzenBody>
+</RadzenLayout>
+<RadzenComponents @rendermode="InteractiveAuto" />
+@code {
+}
